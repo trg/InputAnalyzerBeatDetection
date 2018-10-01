@@ -37,7 +37,6 @@ class InputAnalyzerBeatDetection : public App {
 
     BTrack                          btrack;
     
-    audio::BufferRecorderNodeRef    mBufferRecorderNode;
     audio::InputDeviceNodeRef		mInputDeviceNode;
 	audio::MonitorSpectralNodeRef	mMonitorSpectralNode;
 	vector<float>					mMagSpectrum;
@@ -53,18 +52,15 @@ void InputAnalyzerBeatDetection::setup()
 	// The InputDeviceNode is platform-specific, so you create it using a special method on the Context:
 	mInputDeviceNode = ctx->createInputDeviceNode();
 
-    // Create node that we can sample from for BTrack
-    mBufferRecorderNode = ctx->makeNode( new audio::BufferRecorderNode(1024) ); // 1024 is btrack's default frame size
-
+    BTrack btrack(1024, 2048);
     
 	// By providing an FFT size double that of the window size, we 'zero-pad' the analysis data, which gives
 	// an increase in resolution of the resulting spectrum data.
 	auto monitorFormat = audio::MonitorSpectralNode::Format().fftSize( 2048 ).windowSize( 1024 );
 	mMonitorSpectralNode = ctx->makeNode( new audio::MonitorSpectralNode( monitorFormat ) );
+    
+	mInputDeviceNode >> mMonitorSpectralNode;
 
-	mInputDeviceNode >> mBufferRecorderNode >> mMonitorSpectralNode;
-
-	// InputDeviceNode (and all InputNode subclasses) need to be enabled()'s to process audio. So does the Context:
 	mInputDeviceNode->enable();
 	ctx->enable();
 
@@ -73,6 +69,11 @@ void InputAnalyzerBeatDetection::setup()
 
 void InputAnalyzerBeatDetection::mouseDown( MouseEvent event )
 {
+    audio::Buffer buffer = mMonitorSpectralNode->getBuffer();
+    console() << "number of channels: " << buffer.getNumChannels() << std::endl;
+    console() << "number of frames: " << buffer.getNumFrames() << std::endl;
+    console() << "size: " << buffer.getSize() << std::endl;
+    
 	if( mSpectrumPlot.getBounds().contains( event.getPos() ) )
 		printBinInfo( event.getX() );
 }
@@ -81,6 +82,14 @@ void InputAnalyzerBeatDetection::update()
 {
 	mSpectrumPlot.setBounds( Rectf( 40, 40, (float)getWindowWidth() - 40, (float)getWindowHeight() - 40 ) );
 
+    // Grab audio buffer and pass to btrack
+    vector<double> samples;
+    audio::Buffer buffer = mMonitorSpectralNode->getBuffer();
+    for (int i = 0; i < buffer.getSize(); i++) {
+        samples.push_back((double) buffer[i]);
+    }
+    btrack.processAudioFrame(samples.data());
+    
 	// We copy the magnitude spectrum out from the Node on the main thread, once per update:
 	mMagSpectrum = mMonitorSpectralNode->getMagSpectrum();
 }
@@ -93,6 +102,17 @@ void InputAnalyzerBeatDetection::draw()
 	mSpectrumPlot.draw( mMagSpectrum );
 	drawSpectralCentroid();
 	drawLabels();
+    
+    if(btrack.beatDueInCurrentFrame()) {
+        gl::pushModelView();
+            gl::color(1, 1, 1);
+            gl::drawSolidRect({0.0f, 0.0f, (float)getWindowWidth(), (float)getWindowHeight()});
+            gl::color(0, 0, 0);
+            string beatLabel = "BEAT";
+            mTextureFont->drawString( beatLabel, vec2( getWindowCenter().x - mTextureFont->measureString( beatLabel ).x / 2, (float)getWindowHeight()/2 ) );
+        gl::popModelView();
+    }
+    gl::color( 0, 0.9f, 0.9f );
 }
 
 void InputAnalyzerBeatDetection::drawSpectralCentroid()
@@ -119,8 +139,6 @@ void InputAnalyzerBeatDetection::drawLabels()
 {
 	if( ! mTextureFont )
 		mTextureFont = gl::TextureFont::create( Font( Font::getDefault().getName(), 16 ) );
-
-	gl::color( 0, 0.9f, 0.9f );
 
 	// draw x-axis label
 	string freqLabel = "Frequency (hertz)";

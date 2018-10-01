@@ -1,0 +1,7 @@
+xcode/build/
+*.xcuserstate
+.DS_Store
+*.xcsettings
+/xcode/InputAnalyzer.xcodeproj/project.xcworkspace/contents.xcworkspacedata
+/xcode/InputAnalyzer.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+/xcode/InputAnalyzer.xcodeproj/project.xcworkspace/xcuserdata/thomas.xcuserdatad/WorkspaceSettings.xcsettings
